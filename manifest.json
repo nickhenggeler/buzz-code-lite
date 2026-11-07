@@ -1,0 +1,15 @@
+{
+  "id": "sprig.code-lite",
+  "name": "Code Lite",
+  "apiVersion": 1,
+  "description": "A lightweight code editor for local repositories, inside Buzz.",
+  "discovery": { "category": "productivity", "tags": ["code", "editor"] },
+  "host": {
+    "files": true,
+    "processes": [
+      { "id": "git", "program": "git" },
+      { "id": "tee", "program": "tee" },
+      { "id": "find", "program": "find" }
+    ]
+  }
+}

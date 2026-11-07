@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Code Lite preview</title>
+<style>
+  :root { color-scheme: light dark; --bg: light-dark(#fff, #1b1b1f); --fg: light-dark(#1d1d20, #ececf0); }
+  html, body, #root { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--fg); font: 14px/1.45 -apple-system, BlinkMacSystemFont, sans-serif; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="module">
+import React from "https://esm.sh/react@18.3.1";
+import { createRoot } from "https://esm.sh/react-dom@18.3.1/client?deps=react@18.3.1";
+const { apply } = await import(`../dist/plugin.js?${Date.now()}`);
+
+// An in-memory repository behind the same host interface Buzz provides.
+const ROOT = "/Users/you/.buzz/REPOS/demo-app";
+const files = new Map(Object.entries({
+  "README.md": "# Demo app\n\nA sample project.\n",
+  "package.json": '{\n  "name": "demo-app",\n  "version": "1.0.0"\n}\n',
+  "src/index.ts": 'import { greet } from "./lib/greet";\n\n// Entry point\nexport function main(name: string): void {\n  const message = greet(name);\n  console.log(message);\n}\n',
+  "src/lib/greet.ts": "export const greet = (name: string) => `Hello, ${name}!`;\n",
+  "src/app.py": "def main():\n    print('hello')\n",
+  "src/styles/site.css": "body {\n  color: #333;\n}\n",
+  "docs/guide.md": "## Guide\n\nSome **text**.\n",
+  "scripts/deploy.sh": "#!/bin/sh\necho deploy\n",
+  "win.txt": "one\r\ntwo\r\n",
+}));
+files.set("logo.png", new Uint8Array([0, 1, 2]));
+const committed = new Map(files);
+window.__files = files;
+const encode = (value) => (value instanceof Uint8Array ? value : new TextEncoder().encode(value));
+const respond = (args, input) => {
+  const text = args.join(" ");
+  if (args[0] === "tee" || text.includes("__tee")) return { code: 0, stdout: input };
+  if (text.includes("rev-parse")) return args[1] === ROOT ? { code: 0, stdout: `${ROOT}\n` } : { code: 128, stderr: "not a repo" };
+  if (text.includes("ls-files")) return { code: 0, stdout: [...files.keys()].join("\0") + "\0" };
+  if (text.includes("status")) {
+    const lines = ["## main...origin/main [ahead 1]"];
+    for (const [path, value] of files) if (value !== committed.get(path)) lines.push(` M ${path}`);
+    return { code: 0, stdout: lines.join("\0") + "\0" };
+  }
+  return { code: 0, stdout: "" };
+};
+const host = {
+  async spawn(id, { args = [], onStdout, onStderr }) {
+    let done;
+    const exited = new Promise((resolve) => { done = resolve; });
+    return {
+      kill: async () => {},
+      exited,
+      end: async (input = "") => {
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        if (id === "find") { onStdout?.(`${ROOT}/.git\n/Users/you/.buzz/REPOS/other-repo/.git\n`); return done(0); }
+        if (id === "tee") {
+          if (window.__failSave) { onStderr?.("Permission denied"); return done(1); }
+          files.set(args[0].slice(ROOT.length + 1), input);
+          return done(0);
+        }
+        const result = respond(args, input);
+        if (result.stdout) onStdout?.(result.stdout);
+        if (result.stderr) onStderr?.(result.stderr);
+        done(result.code);
+      },
+    };
+  },
+  async readFile(path) {
+    if (!files.has(path)) throw new Error("No such file");
+    return encode(files.get(path));
+  },
+  resolveDirectory: async (path) => (path === "~" ? "/Users/you" : "/Users/you/.buzz/REPOS"),
+};
+const pages = [];
+const panels = [];
+apply({ react: React, host, pages: { register: (page) => pages.push(page) }, panels: { register: (panel) => panels.push(panel) } });
+const params = new URLSearchParams(location.search);
+const h = React.createElement;
+function Split() {
+  const [open, setOpen] = React.useState(true);
+  const width = Number(params.get("width") ?? 420);
+  return h("div", { style: { display: "flex", height: "100%" } },
+    h("div", { style: { flex: 1, minWidth: 0, padding: 16, borderRight: "1px solid #8884" } },
+      h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 14 } },
+        h("strong", { style: { flex: 1 } }, "# demo-app"),
+        h(panels[0].channelLauncher, { pressed: open, toggle: () => setOpen((value) => !value), available: () => true, canOpen: () => true, open: () => true, context: {} })),
+      h("p", null, "A pretend conversation stays here while the panel is open."),
+      h("textarea", { id: "composer", style: { width: "100%", height: 70 }, placeholder: "Message #demo-app" })),
+    open ? h("div", { style: { width, flexShrink: 0, minHeight: 0 } }, h(panels[0].component, { target: panels[0].launcher.target, close: () => setOpen(false) })) : null);
+}
+createRoot(document.getElementById("root")).render(params.has("panel") ? h(Split) : h(pages[0].component));
+</script>
+</body>
+</html>
